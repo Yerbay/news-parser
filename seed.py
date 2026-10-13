@@ -1,7 +1,7 @@
-"""Стартовый набор источников — добавляется при первом запуске, если база пуста."""
+"""Стартовые источники обеих лент — при запуске добавляются те, которых ещё нет в базе."""
 import db
 
-# (название, категория, вес, адрес, тип)
+# (название, категория, вес, адрес, тип) — лента «Новости AI»
 SOURCES = [
     ("OpenAI News", "Первоисточник", 3, "https://openai.com/news/rss.xml", "rss"),
     ("Google DeepMind", "Первоисточник", 3, "https://deepmind.google/blog/rss.xml", "rss"),
@@ -29,8 +29,35 @@ SOURCES = [
 ]
 
 
+HN_API = "https://hn.algolia.com/api/v1/search_by_date?tags={tag}&numericFilters=points%3E%3D{points}&hitsPerPage=50"
+
+# (название, категория, вес, адрес, тип, путь статей для HTML) — лента «Бизнес-идеи»
+# Не подошли: There's An AI For That и Indie Hackers (403 для ботов), YC Launches и Astana Hub (лента рисуется JS),
+# Futurepedia (каталог без новостей).
+IDEA_SOURCES = [
+    ("Product Hunt", "Витрина", 2, "https://www.producthunt.com/feed", "rss", None),
+    ("Show HN (50+ очков)", "Витрина", 2, HN_API.format(tag="show_hn", points=50), "hn", None),
+    ("Starter Story", "Кейсы", 3, "https://www.starterstory.com/", "html", "/stories/"),
+    ("Reddit: SideProject, SaaS, microsaas, indiehackers", "Кейсы", 2,
+     "https://www.reddit.com/r/SideProject+SaaS+microsaas+indiehackers/top/.rss?t=day&limit=50", "rss", None),
+    ("vc.ru", "Кейсы", 1, "https://vc.ru/rss/all", "rss", None),
+    ("Ideabrowser (идея дня)", "Идеи", 3, "https://www.ideabrowser.com/idea-of-the-day", "html", "/idea/"),
+    ("Exploding Topics", "Идеи", 1, "https://explodingtopics.com/blog", "html", None),
+    ("Ben's Bites", "Идеи", 2, "https://www.bensbites.com/feed", "rss", None),
+    ("Lenny's Newsletter", "Идеи", 2, "https://www.lennysnewsletter.com/feed", "rss", None),
+    ("Reddit: Entrepreneur, smallbusiness", "Спрос", 2,
+     "https://www.reddit.com/r/Entrepreneur+smallbusiness/top/.rss?t=day&limit=50", "rss", None),
+    ("Ask HN (30+ очков)", "Спрос", 2, HN_API.format(tag="ask_hn", points=30), "hn", None),
+    ("digitalbusiness.kz", "Казахстан", 1, "https://digitalbusiness.kz/feed/", "rss", None),
+    ("profit.kz", "Казахстан", 1, "https://profit.kz/rss/", "rss", None),
+]
+
+
 def ensure() -> None:
-    if db.sources(enabled_only=False):
-        return
+    """Добавляет стартовые источники, которых ещё нет в базе. Удалённые пользователем (enabled=0) не возвращает."""
     for name, category, weight, url, kind in SOURCES:
-        db.add_source(name, url, kind, weight, category)
+        if not db.source_by_url(url):
+            db.add_source(name, url, kind, weight, category)
+    for name, category, weight, url, kind, prefix in IDEA_SOURCES:
+        if not db.source_by_url(url):
+            db.add_source(name, url, kind, weight, category, digest="ideas", link_prefix=prefix)

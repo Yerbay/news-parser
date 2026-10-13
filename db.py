@@ -64,6 +64,17 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+# Колонки, добавленные после первой версии: (таблица, колонка, определение)
+MIGRATIONS = [
+    ("sources", "digest", "TEXT NOT NULL DEFAULT 'news'"),  # в какую ленту идут статьи источника
+    ("sources", "link_prefix", "TEXT"),                     # HTML: путь статей, если он не под страницей-списком
+    ("clusters", "digest", "TEXT NOT NULL DEFAULT 'news'"),
+    ("articles", "extra", "TEXT"),                          # JSON: доп. поля ленты (для идей — кто платит и т.п.)
+]
+
+# Ленты: у каждой свои источники, темы, промпт и подборка
+DIGESTS = {"news": "Новости AI", "ideas": "Бизнес-идеи"}
+
 DEFAULTS = {
     "digest_time": "08:30",
     "digest_count": 20,
@@ -74,14 +85,30 @@ DEFAULTS = {
     "topics_interest": "AI, большие языковые модели (LLM), агенты, инструменты разработки и программирования с ИИ, "
                        "открытые модели, исследования в машинном обучении, инференс и железо для ИИ",
     "topics_exclude": "политика, криминал, шоу-бизнес, финансовое регулирование",
+    "ideas:digest_count": 10,
+    "ideas:min_score": 6,
+    "ideas:topics_interest": "бизнес-идеи с применением ИИ, которые команда из 1–3 человек может запустить за 1–2 месяца "
+                             "без крупных инвестиций: микро-SaaS, AI-сервисы и автоматизация для малого бизнеса, "
+                             "нишевые инструменты; кейсы соло-основателей с выручкой; нерешённые задачи, за которые "
+                             "люди готовы платить",
+    "ideas:topics_exclude": "политика, криминал, шоу-бизнес, крипто-спекуляции, привлечение венчурных раундов без "
+                            "описания продукта, проекты, требующие большой команды, железа или лицензий",
     "last_digest_at": 0,
     "last_collect_at": 0,
 }
+
+
+def key(digest: str, name: str) -> str:
+    """Ключ настройки ленты: у «Новостей AI» — без префикса (как в первой версии)."""
+    return name if digest == "news" else f"{digest}:{name}"
 
 conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
 conn.row_factory = sqlite3.Row
 conn.execute("PRAGMA journal_mode=WAL")
 conn.executescript(SCHEMA)
+for _table, _col, _definition in MIGRATIONS:
+    if _col not in {r["name"] for r in conn.execute(f"PRAGMA table_info({_table})")}:
+        conn.execute(f"ALTER TABLE {_table} ADD COLUMN {_col} {_definition}")
 conn.commit()
 
 
@@ -103,7 +130,7 @@ def put(key: str, value) -> None:
 # ---------------------------------------------------------------- источники
 
 def sources(enabled_only: bool = True) -> list[sqlite3.Row]:
-    q = "SELECT * FROM sources" + (" WHERE enabled=1" if enabled_only else "") + " ORDER BY weight DESC, name"
+    q = "SELECT * FROM sources" + (" WHERE enabled=1" if enabled_only else "") + " ORDER BY digest DESC, weight DESC, name"
     return conn.execute(q).fetchall()
 
 
@@ -115,13 +142,15 @@ def source_by_url(url: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM sources WHERE url=?", (url,)).fetchone()
 
 
-def add_source(name: str, url: str, kind: str, weight: int, category: str | None = None) -> int:
+def add_source(name: str, url: str, kind: str, weight: int, category: str | None = None,
+               digest: str = "news", link_prefix: str | None = None) -> int:
     """Добавляет источник; удалённый ранее с тем же адресом включается обратно."""
     conn.execute(
-        "INSERT INTO sources(name, url, kind, weight, category, created_at) VALUES(?,?,?,?,?,?) "
+        "INSERT INTO sources(name, url, kind, weight, category, created_at, digest, link_prefix) "
+        "VALUES(?,?,?,?,?,?,?,?) "
         "ON CONFLICT(url) DO UPDATE SET enabled=1, name=excluded.name, kind=excluded.kind, weight=excluded.weight, "
-        "fail_since=NULL, warned=0",
-        (name, url, kind, weight, category, now()))
+        "digest=excluded.digest, fail_since=NULL, warned=0",
+        (name, url, kind, weight, category, now(), digest, link_prefix))
     conn.commit()
     return source_by_url(url)["id"]
 

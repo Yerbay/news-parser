@@ -146,10 +146,11 @@ def parse_hn(content: bytes) -> list[Item]:
     return items
 
 
-def html_links(html: str, page_url: str) -> list[tuple[str, str]]:
-    """Ссылки на статьи со страницы-списка: тот же сайт, путь глубже страницы-списка."""
+def html_links(html: str, page_url: str, link_prefix: str | None = None) -> list[tuple[str, str]]:
+    """Ссылки на статьи со страницы-списка: тот же сайт, путь на один уровень глубже страницы-списка
+    (или глубже link_prefix, если статьи лежат не под ней — например, /stories/ на главной)."""
     page = urlparse(page_url)
-    prefix = page.path.rstrip("/") + "/"
+    prefix = link_prefix or page.path.rstrip("/") + "/"
     soup = BeautifulSoup(html, "html.parser")
     found: dict[str, str] = {}
     for a in soup.find_all("a", href=True):
@@ -158,6 +159,10 @@ def html_links(html: str, page_url: str) -> list[tuple[str, str]]:
         if p.netloc != page.netloc or p.query or not p.path.startswith(prefix):
             continue
         rest = p.path[len(prefix):].strip("/")
+        if link_prefix and "/" in rest:
+            # Ссылки на подразделы статьи (/idea/<slug>/build) сводим к самой статье
+            rest = rest.split("/")[0]
+            url = f"{p.scheme}://{p.netloc}{prefix}{rest}"
         if not rest or "/" in rest or rest in ("rss", "feed", "page") or rest.startswith(("category", "tag", "page")):
             continue
         url = normalize_url(url)
@@ -193,8 +198,8 @@ def article_details(html: str, url: str, fallback_title: str) -> Item:
 
 # ---------------------------------------------------------------- сбор с источника
 
-async def fetch_source(http: httpx.AsyncClient, kind: str, url: str, is_new_url=None, first_run: bool = False
-                       ) -> list[Item]:
+async def fetch_source(http: httpx.AsyncClient, kind: str, url: str, is_new_url=None, first_run: bool = False,
+                       link_prefix: str | None = None) -> list[Item]:
     """Статьи источника. is_new_url(list[url]) -> set новых ссылок нужен HTML-источникам,
     чтобы открывать страницы только новых статей; на первом обходе подробно — только 3 свежие."""
     r = await get(http, url)
@@ -207,7 +212,7 @@ async def fetch_source(http: httpx.AsyncClient, kind: str, url: str, is_new_url=
     if kind != "html":
         raise FetchError(f"неизвестный тип источника {kind}")
 
-    links = html_links(r.text, url)
+    links = html_links(r.text, url, link_prefix)
     if not links:
         raise FetchError("на странице не нашлось ссылок на статьи")
     fresh = set(is_new_url([u for u, _ in links])) if is_new_url else {u for u, _ in links}
