@@ -31,25 +31,29 @@ SOURCES = [
 
 HN_API = "https://hn.algolia.com/api/v1/search_by_date?tags={tag}&numericFilters=points%3E%3D{points}&hitsPerPage=50"
 
-# (название, категория, вес, адрес, тип, путь статей для HTML) — лента «Бизнес-идеи»
-# Не подошли: There's An AI For That и Indie Hackers (403 для ботов), YC Launches и Astana Hub (лента рисуется JS),
-# Futurepedia (каталог без новостей).
-IDEA_SOURCES = [
-    ("Product Hunt", "Витрина", 2, "https://www.producthunt.com/feed", "rss", None),
-    ("Show HN (50+ очков)", "Витрина", 2, HN_API.format(tag="show_hn", points=50), "hn", None),
-    ("Starter Story", "Кейсы", 3, "https://www.starterstory.com/", "html", "/stories/"),
-    ("Reddit: SideProject, SaaS, microsaas, indiehackers", "Кейсы", 2,
-     "https://www.reddit.com/r/SideProject+SaaS+microsaas+indiehackers/top/.rss?t=day&limit=50", "rss", None),
-    ("vc.ru", "Кейсы", 1, "https://vc.ru/rss/all", "rss", None),
-    ("Ideabrowser (идея дня)", "Идеи", 3, "https://www.ideabrowser.com/idea-of-the-day", "html", "/idea/"),
-    ("Exploding Topics", "Идеи", 1, "https://explodingtopics.com/blog", "html", None),
-    ("Ben's Bites", "Идеи", 2, "https://www.bensbites.com/feed", "rss", None),
-    ("Lenny's Newsletter", "Идеи", 2, "https://www.lennysnewsletter.com/feed", "rss", None),
-    ("Reddit: Entrepreneur, smallbusiness", "Спрос", 2,
-     "https://www.reddit.com/r/Entrepreneur+smallbusiness/top/.rss?t=day&limit=50", "rss", None),
-    ("Ask HN (30+ очков)", "Спрос", 2, HN_API.format(tag="ask_hn", points=30), "hn", None),
-    ("digitalbusiness.kz", "Казахстан", 1, "https://digitalbusiness.kz/feed/", "rss", None),
-    ("profit.kz", "Казахстан", 1, "https://profit.kz/rss/", "rss", None),
+R = "https://www.reddit.com"
+
+# (название, категория, вес, адрес, тип, путь статей для HTML) — лента «Боли»: где люди сами описывают проблемы.
+# Профессиональные сообщества — главный источник; кейсы (боль, которую уже закрыли продуктом) — с малым весом.
+PAIN_SOURCES = [
+    ("Reddit: офисные профессии", "Профессии", 3,
+     R + "/r/accounting+Bookkeeping+LawFirm+humanresources+Insurance+realtors+msp+PropertyManagement"
+         "/top/.rss?t=day&limit=50", "rss", None),
+    ("Reddit: бизнес «в поле»", "Профессии", 3,
+     R + "/r/restaurateur+ecommerce+Construction+HVAC+Dentistry+logistics+freelance+photography"
+         "/top/.rss?t=day&limit=50", "rss", None),
+    ("Reddit: Entrepreneur, smallbusiness", "Предприниматели", 2,
+     R + "/r/Entrepreneur+smallbusiness/top/.rss?t=day&limit=50", "rss", None),
+    ("Ask HN (30+ очков)", "Предприниматели", 2, HN_API.format(tag="ask_hn", points=30), "hn", None),
+    ("Reddit: «is there an app / I wish there was»", "Запросы", 1,
+     R + "/search.rss?q=%22is+there+a+tool%22+OR+%22is+there+an+app%22+OR+%22I+wish+there+was%22"
+         "+OR+%22how+do+you+deal+with%22&sort=top&t=day&limit=50", "rss", None),
+    ("Reddit: SomebodyMakeThis, AppIdeas, Lightbulb", "Запросы", 1,
+     R + "/r/SomebodyMakeThis+AppIdeas+Lightbulb/top/.rss?t=day&limit=50", "rss", None),
+    ("vc.ru", "Русскоязычные", 1, "https://vc.ru/rss/all", "rss", None),
+    ("Starter Story", "Кейсы", 1, "https://www.starterstory.com/", "html", "/stories/"),
+    ("Reddit: SideProject, SaaS, microsaas, indiehackers", "Кейсы", 1,
+     R + "/r/SideProject+SaaS+microsaas+indiehackers/top/.rss?t=day&limit=50", "rss", None),
 ]
 
 
@@ -58,6 +62,14 @@ def ensure() -> None:
     for name, category, weight, url, kind in SOURCES:
         if not db.source_by_url(url):
             db.add_source(name, url, kind, weight, category)
-    for name, category, weight, url, kind, prefix in IDEA_SOURCES:
+    # Бывшая лента «Бизнес-идеи» (до 2026-10-23): нужные источники переходят в «Боли», остальные выключаются
+    pains = {url: (name, category, weight) for name, category, weight, url, _, _ in PAIN_SOURCES}
+    for s in db.conn.execute("SELECT * FROM sources WHERE digest='ideas'").fetchall():
+        if s["url"] in pains:
+            name, category, weight = pains[s["url"]]
+            db.set_source(s["id"], digest="pains", name=name, category=category, weight=weight)
+        else:
+            db.set_source(s["id"], digest="pains", enabled=0)
+    for name, category, weight, url, kind, prefix in PAIN_SOURCES:
         if not db.source_by_url(url):
-            db.add_source(name, url, kind, weight, category, digest="ideas", link_prefix=prefix)
+            db.add_source(name, url, kind, weight, category, digest="pains", link_prefix=prefix)

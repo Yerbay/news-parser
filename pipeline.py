@@ -216,11 +216,24 @@ def digest_items(digest: str) -> list[dict]:
     """Топ за сутки (или с прошлой сводки, если она была раньше — но не дальше 3 суток)."""
     now = db.now()
     since = max(now - 72 * 3600, min(now - 24 * 3600, db.get("last_digest_at") or now))
-    return _candidates(digest, since)[:db.get(db.key(digest, "digest_count"))]
+    limit = db.get(db.key(digest, "digest_count"))
+    per_industry = db.get(db.key(digest, "max_per_industry"))
+    if not per_industry:
+        return _candidates(digest, since)[:limit]
+    picked, seen = [], {}
+    for it in _candidates(digest, since):
+        industry = str(it["extra"].get("industry") or "").strip().lower()
+        if industry and seen.get(industry, 0) >= per_industry:
+            continue
+        seen[industry] = seen.get(industry, 0) + 1
+        picked.append(it)
+        if len(picked) >= limit:
+            break
+    return picked
 
 
 def urgent_items() -> list[dict]:
-    """Срочное — только в ленте новостей: идеи не горят."""
+    """Срочное — только в ленте новостей: боли не горят."""
     if not db.get("urgent_on") or is_quiet():
         return []
     since = db.now() - URGENT_WINDOW_HOURS * 3600

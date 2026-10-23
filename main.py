@@ -28,12 +28,12 @@ MONTHS = ["января", "февраля", "марта", "апреля", "ма�
           "ноября", "декабря"]
 
 HELP = """Привет! Я собираю статьи с ваших источников, отбираю значимые и каждое утро присылаю две подборки:
-«Новости AI» и «Бизнес-идеи» (что можно запустить командой из 1–3 человек).
+«Новости AI» и «Боли» — реальные проблемы людей и бизнеса, которые можно решить с помощью ИИ.
 
 /add &lt;ссылка&gt; — добавить сайт (можно просто прислать ссылку)
 /remove — удалить сайт
 /list — источники и их статус
-/now — обе подборки прямо сейчас (/now news или /now ideas — одну)
+/now — обе подборки прямо сейчас (/now news или /now pains — одну)
 /settings — время, количество, срочные уведомления
 /topics — интересные и исключённые темы каждой ленты
 
@@ -64,13 +64,7 @@ def format_item(n: int | None, it: dict) -> str:
     if db.get("bilingual") and it["summary_orig"] and (it["lang"] or "").lower() != "ru":
         parts.append(f"<i>{esc(it['summary_orig'])}</i>")
     extra = it.get("extra") or {}
-    facts = []
-    if extra.get("who_pays"):
-        facts.append(f"💰 Кто платит: {esc(extra['who_pays'])}")
-    if extra.get("difficulty"):
-        facts.append(f"🛠 Сложность MVP: {esc(extra['difficulty'])}/5")
-    if extra.get("kz"):
-        facts.append(f"🇰🇿 Казахстан: {esc(extra['kz'])}")
+    facts = [f"{icon} {label}: {esc(extra[field])}" for field, icon, label in PAIN_FACTS if extra.get(field)]
     if facts:
         parts.append("\n".join(facts))
     src = f'<a href="{esc(it["url"])}">{esc(it["source"])}</a>'
@@ -79,6 +73,10 @@ def format_item(n: int | None, it: dict) -> str:
         src += f" + ещё {k} {plural(k, 'источник', 'источника', 'источников')}"
     parts.append(f"{src} · {it['score']:.1f}")
     return "\n\n".join(parts)[:4000]
+
+
+PAIN_FACTS = [("industry", "🏭", "Отрасль"), ("workaround", "🔧", "Сейчас"), ("ai_fix", "🤖", "ИИ"),
+              ("solved_by", "✅", "Уже решают"), ("signal", "📣", "Сигнал"), ("kz", "🇰🇿", "Казахстан")]
 
 
 def feedback_kb(cluster_id: int) -> Kb:
@@ -110,7 +108,7 @@ async def refresh() -> None:
         await pipeline.process()
 
 
-DIGEST_HEADERS = {"news": ("📰", ("новость", "новости", "новостей")), "ideas": ("💡", ("идея", "идеи", "идей"))}
+DIGEST_HEADERS = {"news": ("📰", ("новость", "новости", "новостей")), "pains": ("😣", ("боль", "боли", "болей"))}
 
 
 async def run_digest(bot, manual: bool = False, only: str | None = None) -> None:
@@ -219,7 +217,7 @@ async def add_flow(update: Update, url: str) -> None:
         f"✅ Добавлен: <b>{esc(info['name'])}</b> ({KIND_NAMES[info['kind']]})\n{esc(info['url'])}\n\n"
         f"Последние статьи:\n" + "\n".join(lines) +
         "\n\nВес источника: 3 — первоисточник (блог компании), 2 — аналитика, 1 — агрегатор/пересказ.\n"
-        "Лента: куда пойдут статьи — в новости AI или в бизнес-идеи.",
+        "Лента: куда пойдут статьи — в новости AI или в боли.",
         reply_markup=source_kb(sid))
 
 
@@ -265,7 +263,7 @@ async def cmd_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_now(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     only = ctx.args[0].lower() if ctx.args else None
     if only and only not in db.DIGESTS:
-        await update.message.reply_text("Ленты: news (новости AI) или ideas (бизнес-идеи).")
+        await update.message.reply_text("Ленты: news (новости AI) или pains (боли).")
         return
     await update.message.reply_text("Собираю подборку…")
     try:
@@ -280,8 +278,8 @@ def settings_view() -> tuple[str, Kb]:
     urgent = f" (от {db.get('urgent_sources')} сильных источников за 3 часа)" if on else ""
     text = (f"<b>Настройки</b>\n\n"
             f"Время сводки: <b>{db.get('digest_time')}</b> (Алматы)\n"
-            f"Новостей в сводке: <b>{db.get('digest_count')}</b>, идей: <b>{db.get('ideas:digest_count')}</b>\n"
-            f"Минимальная оценка LLM: новости <b>{db.get('min_score')}</b>, идеи <b>{db.get('ideas:min_score')}</b>"
+            f"Новостей в сводке: <b>{db.get('digest_count')}</b>, болей: <b>{db.get('pains:digest_count')}</b>\n"
+            f"Минимальная оценка LLM: новости <b>{db.get('min_score')}</b>, боли <b>{db.get('pains:min_score')}</b>"
             f" из 10\n"
             f"Срочные уведомления: <b>{'вкл' if on else 'выкл'}</b>{urgent}\n"
             f"Саммари ещё и на языке оригинала: <b>{'да' if db.get('bilingual') else 'нет'}</b>\n\n"
@@ -291,8 +289,8 @@ def settings_view() -> tuple[str, Kb]:
          Btn("⚡ Порог срочных", callback_data="set:urgent_sources")],
         [Btn("🔢 Новостей", callback_data="set:digest_count"),
          Btn("⭐ Мин. оценка новостей", callback_data="set:min_score")],
-        [Btn("🔢 Идей", callback_data="set:ideas:digest_count"),
-         Btn("⭐ Мин. оценка идей", callback_data="set:ideas:min_score")],
+        [Btn("🔢 Болей", callback_data="set:pains:digest_count"),
+         Btn("⭐ Мин. оценка болей", callback_data="set:pains:min_score")],
         [Btn(f"Срочные: {'выключить' if on else 'включить'}", callback_data="tg:urgent_on")],
         [Btn(f"Язык оригинала: {'выключить' if db.get('bilingual') else 'включить'}", callback_data="tg:bilingual")],
     ])
@@ -334,7 +332,7 @@ async def cmd_topics(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text.strip()
     key = ctx.user_data.pop("await", None)
-    base = key.split(":")[-1] if key else None  # ideas:digest_count -> digest_count
+    base = key.split(":")[-1] if key else None  # pains:digest_count -> digest_count
     if key == "add":
         await add_flow(update, text)
         return
