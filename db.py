@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS articles (
     llm_score INTEGER,
     excluded INTEGER,
     summary_ru TEXT,
-    summary_orig TEXT,
+    summary_orig TEXT,               -- не используется с 2026-10-23 (было саммари на языке оригинала)
     cluster_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status);
@@ -81,7 +81,6 @@ DEFAULTS = {
     "min_score": 6,          # минимальная оценка LLM, чтобы попасть в сводку
     "urgent_on": True,
     "urgent_sources": 3,     # срочно: столько сильных источников (вес ≥2) за 3 часа
-    "bilingual": True,       # саммари ещё и на языке оригинала
     "topics_interest": "AI, большие языковые модели (LLM), агенты, инструменты разработки и программирования с ИИ, "
                        "открытые модели, исследования в машинном обучении, инференс и железо для ИИ",
     "topics_exclude": "политика, криминал, шоу-бизнес, финансовое регулирование",

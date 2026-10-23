@@ -61,8 +61,6 @@ def format_item(n: int | None, it: dict) -> str:
     parts = [f"<b>{f'{n}. ' if n else ''}{esc(it['title'])}</b>"]
     if it["summary_ru"]:
         parts.append(esc(it["summary_ru"]))
-    if db.get("bilingual") and it["summary_orig"] and (it["lang"] or "").lower() != "ru":
-        parts.append(f"<i>{esc(it['summary_orig'])}</i>")
     extra = it.get("extra") or {}
     facts = [f"{icon} {label}: {esc(extra[field])}" for field, icon, label in PAIN_FACTS if extra.get(field)]
     if facts:
@@ -281,8 +279,7 @@ def settings_view() -> tuple[str, Kb]:
             f"Новостей в сводке: <b>{db.get('digest_count')}</b>, болей: <b>{db.get('pains:digest_count')}</b>\n"
             f"Минимальная оценка LLM: новости <b>{db.get('min_score')}</b>, боли <b>{db.get('pains:min_score')}</b>"
             f" из 10\n"
-            f"Срочные уведомления: <b>{'вкл' if on else 'выкл'}</b>{urgent}\n"
-            f"Саммари ещё и на языке оригинала: <b>{'да' if db.get('bilingual') else 'нет'}</b>\n\n"
+            f"Срочные уведомления: <b>{'вкл' if on else 'выкл'}</b>{urgent}\n\n"
             f"С 23:00 до 8:00 срочное не присылается — оно попадёт в утреннюю сводку.")
     kb = Kb([
         [Btn("🕗 Время", callback_data="set:digest_time"),
@@ -292,7 +289,6 @@ def settings_view() -> tuple[str, Kb]:
         [Btn("🔢 Болей", callback_data="set:pains:digest_count"),
          Btn("⭐ Мин. оценка болей", callback_data="set:pains:min_score")],
         [Btn(f"Срочные: {'выключить' if on else 'включить'}", callback_data="tg:urgent_on")],
-        [Btn(f"Язык оригинала: {'выключить' if db.get('bilingual') else 'включить'}", callback_data="tg:bilingual")],
     ])
     return text, kb
 
