@@ -56,4 +56,4 @@ cp .env.example .env   # BOT_TOKEN, OWNER_ID, LLM_API_KEY
 python main.py
 ```
 
-На сервере работает как systemd-сервис `news-parser.service` (см. `news-parser.service`).
+Для постоянной работы есть пример сервиса systemd: `news-parser.service`. Сейчас проект нигде не развёрнут.
